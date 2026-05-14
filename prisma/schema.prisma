@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BatchStatus {
+  DRAFT
+  COMING_SOON
+  OPEN
+  FULL
+  ACTIVE
+  COMPLETED
+}
+
+enum SlotStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+enum InvestmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum TransactionType {
+  DEPOSIT
+  INVESTMENT
+  PAYOUT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String?
+  lastName  String?
+  phoneNumber String?
+  avatarUrl   String?
+  
+  // User Bank Details (for payouts)
+  bankName      String?
+  accountNumber String?
+  accountName   String?
+
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+
+  wallet      Wallet?
+  investments Investment[]
+  payments    Payment[]
+  transactions Transaction[]
+  activities   Activity[]
+}
+
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Decimal  @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+enum HealthStatus {
+  EXCELLENT
+  GOOD
+  MONITORING
+  CRITICAL
+}
+
+model Farm {
+  id        String   @id @default(uuid())
+  name      String
+  location  String
+  createdAt DateTime @default(now())
+
+  animals    FarmAnimal[]
+  batchFarms BatchFarm[]
+}
+
+model AnimalType {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g. Goat, Ram, Chicken
+  description String?
+  createdAt   DateTime @default(now())
+
+  batches Batch[]
+  farmAnimals FarmAnimal[]
+}
+
+model FarmAnimal {
+  id           String @id @default(uuid())
+  farmId       String
+  animalTypeId String
+  quantity     Int    @default(0)
+
+  farm       Farm       @relation(fields: [farmId], references: [id])
+  animalType AnimalType @relation(fields: [animalTypeId], references: [id])
+
+  @@unique([farmId, animalTypeId])
+}
+
+model Batch {
+  id           String      @id @default(uuid())
+  name         String
+  description  String?
+  animalTypeId String
+  
+  totalUnits   Int         // Total quantity available in this batch
+  animalPrice  Decimal     // Base price per unit
+  serviceFee   Decimal     // Service/Feeding fee per unit
+  estimatedSalePriceLow Decimal // Target exit price (lower bound)
+  estimatedSalePriceHigh Decimal // Target exit price (upper bound)
+
+  campaignStartDate DateTime? // When users can start buying units
+  campaignEndDate   DateTime? // When buying window ends
+  
+  currentMarketValueLow  Decimal? // Current estimated value (low)
+  currentMarketValueHigh Decimal? // Current estimated value (high)
+
+  finalSalePrice Decimal?  // Actual per-unit sale price set by admin after batch ends
+  completedAt    DateTime? // When the batch was marked as completed
+
+  startDate    DateTime
+  endDate      DateTime
+
+  status       BatchStatus   @default(DRAFT)
+  healthStatus HealthStatus  @default(EXCELLENT)
+  createdAt    DateTime      @default(now())
+
+  animalType AnimalType @relation(fields: [animalTypeId], references: [id])
+  batchFarms BatchFarm[]
+  
+  investments Investment[]
+  payouts     Payout[]
+}
+
+model BatchFarm {
+  id        String @id @default(uuid())
+  batchId   String
+  farmId    String
+  quantity  Int    // Quantity of animals contributed by this farm to this batch
+
+  batch Batch @relation(fields: [batchId], references: [id])
+  farm  Farm  @relation(fields: [farmId], references: [id])
+
+  @@unique([batchId, farmId])
+}
+
+model Investment {
+  id        String           @id @default(uuid())
+  userId    String
+  batchId   String
+  units     Int              // Number of animals owned in this batch
+  amount    Decimal          // Total amount paid (units * (price + fee))
+
+  status       InvestmentStatus @default(PENDING)
+  payoutStatus PayoutStatus?    // null = no payout, PENDING = awaiting transfer, PAID = sent
+  payoutAmount Decimal?         // units × finalSalePrice (set when admin sets final price)
+  paidAt       DateTime?        // When admin marked this investment as paid out
+  createdAt    DateTime         @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  batch Batch @relation(fields: [batchId], references: [id])
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  userId    String
+  amount    Decimal
+
+  provider  String
+  reference String        @unique
+  status    PaymentStatus
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Transaction {
+  id        String            @id @default(uuid())
+  userId    String
+  amount    Decimal
+  type      TransactionType
+  status    TransactionStatus
+  createdAt DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  ledgerEntries LedgerEntry[]
+}
+
+model LedgerEntry {
+  id            String           @id @default(uuid())
+  transactionId String
+  walletId      String
+  amount        Decimal
+  direction     LedgerDirection
+  createdAt     DateTime         @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+}
+
+model Payout {
+  id          String   @id @default(uuid())
+  batchId     String
+  totalAmount Decimal
+  createdAt   DateTime @default(now())
+
+  batch Batch @relation(fields: [batchId], references: [id])
+}
+
+model Activity {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   String?
+  entity    String?
+  entityId  String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+model BankDetail {
+  id            String   @id @default(uuid())
+  accountNumber String
+  bankName      String
+  accountName   String
+  updatedAt     DateTime @updatedAt
+}
