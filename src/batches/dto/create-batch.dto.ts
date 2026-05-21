@@ -42,10 +42,15 @@ export class CreateBatchDto {
   @IsNotEmpty()
   animalPrice: number;
 
-  @ApiProperty({ example: 5000 })
+  @ApiProperty({ example: 3500 })
   @IsNumber()
   @IsNotEmpty()
-  serviceFee: number;
+  feedingFee: number;
+
+  @ApiProperty({ example: 1500 })
+  @IsNumber()
+  @IsNotEmpty()
+  medicationFee: number;
 
   @ApiProperty({ example: 70000 })
   @IsNumber()

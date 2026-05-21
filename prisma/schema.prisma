@@ -141,7 +141,8 @@ model Batch {
   
   totalUnits   Int         // Total quantity available in this batch
   animalPrice  Decimal     // Base price per unit
-  serviceFee   Decimal     // Service/Feeding fee per unit
+  feedingFee   Decimal     // Feeding fee per unit
+  medicationFee Decimal    // Medication fee per unit
   estimatedSalePriceLow Decimal // Target exit price (lower bound)
   estimatedSalePriceHigh Decimal // Target exit price (upper bound)
 

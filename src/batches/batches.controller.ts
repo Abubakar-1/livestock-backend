@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { BatchesService } from './batches.service';
 import { ApiTags } from '@nestjs/swagger';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
@@ -23,6 +23,12 @@ export class BatchesController {
   @ResponseMessage('Batches retrieved')
   findAll() {
     return this.batchesService.findAll();
+  }
+
+  @Get('animal-type/:animalTypeId')
+  @ResponseMessage('Animal type batches retrieved')
+  findByAnimalType(@Param('animalTypeId') animalTypeId: string) {
+    return this.batchesService.findByAnimalType(animalTypeId);
   }
 
   @Get(':id')
@@ -78,5 +84,12 @@ export class BatchesController {
   @ResponseMessage('All pending payouts marked as paid')
   markAllPaid(@Param('id') id: string) {
     return this.batchesService.markAllPaid(id);
+  }
+
+  @Delete(':id')
+  @TrackActivity('Batch Deleted', 'Batch')
+  @ResponseMessage('Batch deleted successfully')
+  remove(@Param('id') id: string) {
+    return this.batchesService.remove(id);
   }
 }

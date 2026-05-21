@@ -30,6 +30,14 @@ export class UsersController {
     return this.usersService.getProfile(req.user.id);
   }
 
+  @Get('admin/owners')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ResponseMessage('Asset owners retrieved')
+  findAssetOwners() {
+    return this.usersService.findAssetOwners();
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)

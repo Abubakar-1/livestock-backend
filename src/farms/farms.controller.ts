@@ -51,4 +51,11 @@ export class FarmsController {
     }
     return this.farmsService.addAnimals(id, updateInventoryDto.animalTypeId, updateInventoryDto.quantity);
   }
+
+  @Delete(':id')
+  @TrackActivity('Farm Deleted', 'Farm')
+  @ResponseMessage('Farm deleted successfully')
+  remove(@Param('id') id: string) {
+    return this.farmsService.remove(id);
+  }
 }

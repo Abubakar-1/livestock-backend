@@ -11,7 +11,8 @@ export class BatchesService {
     description?: string;
     animalTypeId: string;
     animalPrice: number;
-    serviceFee: number;
+    feedingFee: number;
+    medicationFee: number;
     estimatedSalePriceLow: number;
     estimatedSalePriceHigh: number;
     startDate: Date;
@@ -55,7 +56,8 @@ export class BatchesService {
           animalTypeId: data.animalTypeId,
           totalUnits,
           animalPrice: data.animalPrice,
-          serviceFee: data.serviceFee,
+          feedingFee: data.feedingFee,
+          medicationFee: data.medicationFee,
           estimatedSalePriceLow: data.estimatedSalePriceLow,
           estimatedSalePriceHigh: data.estimatedSalePriceHigh,
           startDate: new Date(data.startDate),
@@ -86,7 +88,8 @@ export class BatchesService {
       name?: string;
       description?: string;
       animalPrice?: number;
-      serviceFee?: number;
+      feedingFee?: number;
+      medicationFee?: number;
       estimatedSalePriceLow?: number;
       estimatedSalePriceHigh?: number;
       startDate?: Date;
@@ -109,7 +112,8 @@ export class BatchesService {
         ...(data.name && { name: data.name }),
         ...(data.description !== undefined && { description: data.description }),
         ...(data.animalPrice !== undefined && { animalPrice: data.animalPrice }),
-        ...(data.serviceFee !== undefined && { serviceFee: data.serviceFee }),
+        ...(data.feedingFee !== undefined && { feedingFee: data.feedingFee }),
+        ...(data.medicationFee !== undefined && { medicationFee: data.medicationFee }),
         ...(data.estimatedSalePriceLow !== undefined && { estimatedSalePriceLow: data.estimatedSalePriceLow }),
         ...(data.estimatedSalePriceHigh !== undefined && { estimatedSalePriceHigh: data.estimatedSalePriceHigh }),
         ...(data.startDate && { startDate: new Date(data.startDate) }),
@@ -134,6 +138,22 @@ export class BatchesService {
 
   async findAll() {
     return this.prisma.batch.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        animalType: true,
+        batchFarms: {
+          include: { farm: true },
+        },
+        _count: {
+          select: { investments: true },
+        },
+      },
+    });
+  }
+
+  async findByAnimalType(animalTypeId: string) {
+    return this.prisma.batch.findMany({
+      where: { animalTypeId },
       orderBy: { createdAt: 'desc' },
       include: {
         animalType: true,
@@ -271,6 +291,42 @@ export class BatchesService {
         payoutStatus: 'PAID',
         paidAt: new Date(),
       },
+    });
+  }
+
+  async remove(id: string) {
+    const batch = await this.prisma.batch.findUnique({
+      where: { id },
+      include: {
+        batchFarms: true,
+        _count: { select: { investments: true } },
+      },
+    });
+    if (!batch) throw new NotFoundException('Batch not found');
+    if (batch._count.investments > 0) {
+      throw new BadRequestException('Cannot delete a batch that already has purchases');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const allocation of batch.batchFarms) {
+        await tx.farmAnimal.upsert({
+          where: {
+            farmId_animalTypeId: {
+              farmId: allocation.farmId,
+              animalTypeId: batch.animalTypeId,
+            },
+          },
+          update: { quantity: { increment: allocation.quantity } },
+          create: {
+            farmId: allocation.farmId,
+            animalTypeId: batch.animalTypeId,
+            quantity: allocation.quantity,
+          },
+        });
+      }
+
+      await tx.batchFarm.deleteMany({ where: { batchId: id } });
+      return tx.batch.delete({ where: { id } });
     });
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -44,6 +44,16 @@ export class FarmsService {
   }
 
   async remove(id: string) {
+    const farm = await this.prisma.farm.findUnique({
+      where: { id },
+      include: { _count: { select: { batchFarms: true } } },
+    });
+    if (!farm) throw new NotFoundException('Farm not found');
+    if (farm._count.batchFarms > 0) {
+      throw new BadRequestException('Cannot delete a farm that is allocated to batches');
+    }
+
+    await this.prisma.farmAnimal.deleteMany({ where: { farmId: id } });
     return this.prisma.farm.delete({ where: { id } });
   }
 

@@ -52,6 +52,92 @@ export class UsersService {
     });
   }
 
+  async findAssetOwners() {
+    const owners = await this.prisma.user.findMany({
+      where: { role: 'USER' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phoneNumber: true,
+        avatarUrl: true,
+        createdAt: true,
+        investments: {
+          include: {
+            batch: {
+              include: { animalType: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const ownerCards = owners.map((owner) => {
+      const confirmed = owner.investments.filter((investment) => investment.status === 'CONFIRMED');
+      const activeBatchIds = new Set(
+        confirmed
+          .filter((investment) => ['OPEN', 'ACTIVE', 'FULL'].includes(investment.batch.status))
+          .map((investment) => investment.batchId),
+      );
+
+      const totalAssetsValue = confirmed.reduce((sum, investment) => {
+        const batch = investment.batch;
+        const currentMarketValue = Number(batch.currentMarketValueLow || 0);
+        const unitValue =
+          currentMarketValue > 0
+            ? currentMarketValue
+            : Number(batch.animalPrice) + Number(batch.feedingFee) + Number(batch.medicationFee);
+        return sum + investment.units * unitValue;
+      }, 0);
+
+      const totalCost = confirmed.reduce(
+        (sum, investment) => sum + Number(investment.amount || 0),
+        0,
+      );
+      const performance =
+        totalCost > 0 ? ((totalAssetsValue - totalCost) / totalCost) * 100 : 0;
+
+      return {
+        id: owner.id,
+        name:
+          [owner.firstName, owner.lastName].filter(Boolean).join(' ') ||
+          owner.email,
+        email: owner.email,
+        phoneNumber: owner.phoneNumber,
+        avatarUrl: owner.avatarUrl,
+        joinedAt: owner.createdAt,
+        totalAssetsValue,
+        activeBatches: activeBatchIds.size,
+        totalOrders: owner.investments.length,
+        confirmedOrders: confirmed.length,
+        performance,
+        latestAsset: confirmed[0]?.batch?.name || null,
+      };
+    });
+
+    const platformAum = ownerCards.reduce((sum, owner) => sum + owner.totalAssetsValue, 0);
+    const confirmedInvestments = owners.flatMap((owner) =>
+      owner.investments.filter((investment) => investment.status === 'CONFIRMED'),
+    );
+    const avgPurchase =
+      confirmedInvestments.length > 0
+        ? confirmedInvestments.reduce((sum, investment) => sum + Number(investment.amount || 0), 0) /
+          confirmedInvestments.length
+        : 0;
+
+    return {
+      stats: {
+        totalOwners: ownerCards.length,
+        platformAum,
+        avgPurchase,
+      },
+      owners: ownerCards,
+    };
+  }
+
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },

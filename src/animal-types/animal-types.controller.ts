@@ -24,4 +24,16 @@ export class AnimalTypesController {
   findOne(@Param('id') id: string) {
     return this.animalTypesService.findOne(id);
   }
+
+  @Patch(':id')
+  @ResponseMessage('Animal type updated')
+  update(@Param('id') id: string, @Body() body: { name?: string; description?: string }) {
+    return this.animalTypesService.update(id, body);
+  }
+
+  @Delete(':id')
+  @ResponseMessage('Animal type deleted')
+  remove(@Param('id') id: string) {
+    return this.animalTypesService.remove(id);
+  }
 }

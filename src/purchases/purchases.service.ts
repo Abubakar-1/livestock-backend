@@ -27,7 +27,8 @@ export class PurchasesService {
     }
 
     // Calculate cost
-    const costPerUnit = Number(batch.animalPrice) + Number(batch.serviceFee);
+    const costPerUnit =
+      Number(batch.animalPrice) + Number(batch.feedingFee) + Number(batch.medicationFee);
     const totalAmount = costPerUnit * units;
 
     // Optional: deduct from wallet if there's balance, otherwise we leave it PENDING for a payment gateway

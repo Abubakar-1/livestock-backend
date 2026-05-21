@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -25,6 +25,16 @@ export class AnimalTypesService {
   }
 
   async remove(id: string) {
+    const animalType = await this.prisma.animalType.findUnique({
+      where: { id },
+      include: { _count: { select: { batches: true } } },
+    });
+    if (!animalType) throw new NotFoundException('Animal type not found');
+    if (animalType._count.batches > 0) {
+      throw new BadRequestException('Cannot delete an animal type that has batches');
+    }
+
+    await this.prisma.farmAnimal.deleteMany({ where: { animalTypeId: id } });
     return this.prisma.animalType.delete({ where: { id } });
   }
 }
