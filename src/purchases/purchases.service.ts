@@ -6,6 +6,11 @@ export class PurchasesService {
   constructor(private prisma: PrismaService) {}
 
   async create(userId: string, batchId: string, units: number) {
+    const requestedUnits = Number(units);
+    if (!Number.isInteger(requestedUnits) || requestedUnits < 1) {
+      throw new BadRequestException('Please select at least 1 unit');
+    }
+
     // Validate the batch
     const batch = await this.prisma.batch.findUnique({ where: { id: batchId } });
     if (!batch) throw new NotFoundException('Batch not found');
@@ -15,21 +20,21 @@ export class PurchasesService {
 
     // Calculate how many units are already purchased
     const currentInvestments = await this.prisma.investment.aggregate({
-      where: { batchId, status: { not: 'CANCELLED' } },
+      where: { batchId, status: 'CONFIRMED' },
       _sum: { units: true },
     });
     
     const purchasedUnits = currentInvestments._sum.units || 0;
     const availableUnits = batch.totalUnits - purchasedUnits;
 
-    if (units > availableUnits) {
+    if (requestedUnits > availableUnits) {
       throw new BadRequestException(`Only ${availableUnits} units available in this batch`);
     }
 
     // Calculate cost
     const costPerUnit =
       Number(batch.animalPrice) + Number(batch.feedingFee) + Number(batch.medicationFee);
-    const totalAmount = costPerUnit * units;
+    const totalAmount = costPerUnit * requestedUnits;
 
     // Optional: deduct from wallet if there's balance, otherwise we leave it PENDING for a payment gateway
     // For now we just create the record as PENDING. The user will be redirected to payment.
@@ -37,7 +42,7 @@ export class PurchasesService {
       data: {
         userId,
         batchId,
-        units,
+        units: requestedUnits,
         amount: totalAmount,
         status: 'PENDING',
       },
@@ -91,20 +96,40 @@ export class PurchasesService {
   }
 
   async confirmPurchase(id: string) {
-    const purchase = await this.prisma.investment.findUnique({ where: { id } });
-    if (!purchase) throw new NotFoundException('Purchase not found');
-    
-    if (purchase.status === 'CONFIRMED') {
-      throw new BadRequestException('Purchase is already confirmed');
-    }
-    
-    if (purchase.status === 'CANCELLED') {
-      throw new BadRequestException('Cannot confirm a cancelled purchase');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const purchase = await tx.investment.findUnique({ where: { id } });
+      if (!purchase) throw new NotFoundException('Purchase not found');
 
-    return this.prisma.investment.update({
-      where: { id },
-      data: { status: 'CONFIRMED' },
+      if (purchase.status === 'CONFIRMED') {
+        throw new BadRequestException('Purchase is already confirmed');
+      }
+
+      if (purchase.status === 'CANCELLED') {
+        throw new BadRequestException('Cannot confirm a cancelled purchase');
+      }
+
+      const batch = await tx.batch.findUnique({ where: { id: purchase.batchId } });
+      if (!batch) throw new NotFoundException('Batch not found');
+
+      const confirmedInvestments = await tx.investment.aggregate({
+        where: {
+          batchId: purchase.batchId,
+          status: 'CONFIRMED',
+        },
+        _sum: { units: true },
+      });
+
+      const confirmedUnits = confirmedInvestments._sum.units || 0;
+      const availableUnits = batch.totalUnits - confirmedUnits;
+
+      if (purchase.units > availableUnits) {
+        throw new BadRequestException(`Only ${availableUnits} units available in this batch`);
+      }
+
+      return tx.investment.update({
+        where: { id },
+        data: { status: 'CONFIRMED' },
+      });
     });
   }
 

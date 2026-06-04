@@ -2,9 +2,56 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { BatchStatus, HealthStatus } from '@prisma/client';
 
+type BatchWithUnitCounts = {
+  id: string;
+  totalUnits: number;
+  investments?: { units: number; status: string }[];
+};
+
 @Injectable()
 export class BatchesService {
   constructor(private prisma: PrismaService) {}
+
+  private addUnitAvailability<T extends BatchWithUnitCounts>(batch: T, purchasedUnits: number) {
+    return {
+      ...batch,
+      confirmedUnits: purchasedUnits,
+      purchasedUnits,
+      availableUnits: Math.max(0, batch.totalUnits - purchasedUnits),
+    };
+  }
+
+  private async withUnitAvailability<T extends BatchWithUnitCounts>(batches: T[]) {
+    if (batches.length === 0) return [];
+
+    const unitSums = await this.prisma.investment.groupBy({
+      by: ['batchId'],
+      where: {
+        batchId: { in: batches.map((batch) => batch.id) },
+        status: 'CONFIRMED',
+      },
+      _sum: { units: true },
+    });
+
+    const purchasedUnitsByBatch = new Map(
+      unitSums.map((sum) => [sum.batchId, sum._sum.units || 0]),
+    );
+
+    return batches.map((batch) =>
+      this.addUnitAvailability(batch, purchasedUnitsByBatch.get(batch.id) || 0),
+    );
+  }
+
+  private withUnitAvailabilityFromInvestments<T extends BatchWithUnitCounts>(batch: T) {
+    const purchasedUnits =
+      batch.investments?.reduce(
+        (sum, investment) =>
+          investment.status === 'CONFIRMED' ? sum + investment.units : sum,
+        0,
+      ) || 0;
+
+    return this.addUnitAvailability(batch, purchasedUnits);
+  }
 
   async create(data: {
     name: string;
@@ -137,22 +184,31 @@ export class BatchesService {
   }
 
   async findAll() {
-    return this.prisma.batch.findMany({
+    const batches = await this.prisma.batch.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         animalType: true,
         batchFarms: {
           include: { farm: true },
         },
+        investments: {
+          select: {
+            id: true,
+            units: true,
+            status: true,
+          },
+        },
         _count: {
           select: { investments: true },
         },
       },
     });
+
+    return this.withUnitAvailability(batches);
   }
 
   async findByAnimalType(animalTypeId: string) {
-    return this.prisma.batch.findMany({
+    const batches = await this.prisma.batch.findMany({
       where: { animalTypeId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -160,11 +216,20 @@ export class BatchesService {
         batchFarms: {
           include: { farm: true },
         },
+        investments: {
+          select: {
+            id: true,
+            units: true,
+            status: true,
+          },
+        },
         _count: {
           select: { investments: true },
         },
       },
     });
+
+    return this.withUnitAvailability(batches);
   }
 
   async findOne(id: string) {
@@ -181,7 +246,7 @@ export class BatchesService {
       },
     });
     if (!batch) throw new NotFoundException('Batch not found');
-    return batch;
+    return this.withUnitAvailabilityFromInvestments(batch);
   }
 
   async updateHealth(id: string, healthStatus: HealthStatus) {
