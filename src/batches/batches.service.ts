@@ -12,12 +12,12 @@ type BatchWithUnitCounts = {
 export class BatchesService {
   constructor(private prisma: PrismaService) {}
 
-  private addUnitAvailability<T extends BatchWithUnitCounts>(batch: T, purchasedUnits: number) {
+  private addUnitAvailability<T extends BatchWithUnitCounts>(batch: T, confirmedUnits: number) {
     return {
       ...batch,
-      confirmedUnits: purchasedUnits,
-      purchasedUnits,
-      availableUnits: Math.max(0, batch.totalUnits - purchasedUnits),
+      confirmedUnits,
+      purchasedUnits: confirmedUnits,
+      availableUnits: Math.max(0, batch.totalUnits - confirmedUnits),
     };
   }
 
@@ -33,24 +33,24 @@ export class BatchesService {
       _sum: { units: true },
     });
 
-    const purchasedUnitsByBatch = new Map(
+    const confirmedUnitsByBatch = new Map(
       unitSums.map((sum) => [sum.batchId, sum._sum.units || 0]),
     );
 
     return batches.map((batch) =>
-      this.addUnitAvailability(batch, purchasedUnitsByBatch.get(batch.id) || 0),
+      this.addUnitAvailability(batch, confirmedUnitsByBatch.get(batch.id) || 0),
     );
   }
 
   private withUnitAvailabilityFromInvestments<T extends BatchWithUnitCounts>(batch: T) {
-    const purchasedUnits =
+    const confirmedUnits =
       batch.investments?.reduce(
         (sum, investment) =>
           investment.status === 'CONFIRMED' ? sum + investment.units : sum,
         0,
       ) || 0;
 
-    return this.addUnitAvailability(batch, purchasedUnits);
+    return this.addUnitAvailability(batch, confirmedUnits);
   }
 
   async create(data: {

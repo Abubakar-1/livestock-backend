@@ -18,14 +18,14 @@ export class PurchasesService {
       throw new BadRequestException('Batch is not open for purchases');
     }
 
-    // Calculate how many units are already purchased
+    // Pending orders do not reserve units; only confirmed transfers reduce availability.
     const currentInvestments = await this.prisma.investment.aggregate({
       where: { batchId, status: 'CONFIRMED' },
       _sum: { units: true },
     });
     
-    const purchasedUnits = currentInvestments._sum.units || 0;
-    const availableUnits = batch.totalUnits - purchasedUnits;
+    const confirmedUnits = currentInvestments._sum.units || 0;
+    const availableUnits = batch.totalUnits - confirmedUnits;
 
     if (requestedUnits > availableUnits) {
       throw new BadRequestException(`Only ${availableUnits} units available in this batch`);
